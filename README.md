@@ -4,10 +4,12 @@ An Image component for React Native that will cache itself to disk.
 fork of react-native-cacheable-image
 
 ## Notes 2
-We got obsessed with this component and decided to refactor a bit to achieve the stability we needed.
+I got obsessed with this component and decided to refactor a bit to achieve the stability we needed.
 few things different from the original
 - Checks for corrupted downloads (on bad connections this is common, leading to caching and displaying the corrupted blank image file)
-- Logging. Lots of logging. Set debug to 1 and see whats going on inside the component in real time using reactotron.
+- Reactotron Logging. Lots of logging. Super chatty verbose logs. 
+Set debug to 1 and see whats going on inside the component in real time using reactotron.
+- States are managed better.
 
 ### I recommend you try both the variants (this and the original) and leave a feedback so we can improve this component
 
