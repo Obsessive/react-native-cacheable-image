@@ -1,27 +1,25 @@
 import React from 'react';
-import { Image, ActivityIndicator, NetInfo } from 'react-native';
+import { Image, ActivityIndicator } from 'react-native';
 import RNFS, { DocumentDirectoryPath } from 'react-native-fs';
 import ResponsiveImage from 'react-native-responsive-image';
-
+const debug = 1
 const SHA1 = require("crypto-js/sha1");
 const URL = require('url-parse');
 
 export default
-class CacheableImage extends React.Component {
+    class CacheableImage extends React.Component {
 
     constructor(props) {
         super(props)
         this.imageDownloadBegin = this.imageDownloadBegin.bind(this);
         this.imageDownloadProgress = this.imageDownloadProgress.bind(this);
-        this._handleConnectivityChange = this._handleConnectivityChange.bind(this);
-        
+
         this.state = {
             isRemote: false,
             cachedImagePath: null,
             downloading: false,
             cacheable: true,
-            jobId: null,
-            networkAvailable: false
+            jobId: null
         };
     };
 
@@ -32,139 +30,153 @@ class CacheableImage extends React.Component {
     }
 
     shouldComponentUpdate(nextProps, nextState) {
-        if (nextState === this.state && nextProps === this.props) {
-            return false;
-        }
         return true;
     }
-    
+
     async imageDownloadBegin(info) {
-        this.setState({downloading: true, jobId: info.jobId});
+        if (debug) {
+            console.tron.log("Download begun with jobId: " + info.jobId)
+        }
+        this.setState({ downloading: true, jobId: info.jobId });
     }
 
     async imageDownloadProgress(info) {
         if ((info.contentLength / info.bytesWritten) == 1) {
-            this.setState({downloading: false, jobId: null});
+            this.setState({ downloading: false, jobId: null });
         }
     }
 
     async checkImageCache(imageUri, cachePath, cacheKey) {
-        const dirPath = DocumentDirectoryPath+'/'+cachePath;
-        const filePath = dirPath+'/'+cacheKey;
 
+        const dirPath = DocumentDirectoryPath + '/' + cachePath;
+        const filePath = dirPath + '/' + cacheKey;
+        if (debug) {
+            console.tron.log("Checking image cache in path " + dirPath)
+            console.tron.log("File path is : " + filePath)
+        }
         RNFS
-        .stat(filePath)
-        .then((res) => {
-            if (res.isFile()) {
-                // means file exists, ie, cache-hit
-                this.setState({cacheable: true, cachedImagePath: filePath});
-            }
-        })
-        .catch((err) => {
-        
-            // means file does not exist
-            // first make sure network is available..
-            if (this.state.networkAvailable) {
-                this.setState({cacheable: false, cachedImagePath: null});
-                return;
-            }
-                        
-            // then make sure directory exists.. then begin download
-            // The NSURLIsExcludedFromBackupKey property can be provided to set this attribute on iOS platforms.
-            // Apple will reject apps for storing offline cache data that does not have this attribute.
-            // https://github.com/johanneslumpe/react-native-fs#mkdirfilepath-string-options-mkdiroptions-promisevoid
-            RNFS
-            .mkdir(dirPath, {NSURLIsExcludedFromBackupKey: true})
-            .then(() => {
-                // before we change the cachedImagePath.. if the previous cachedImagePath was set.. remove it
-                if (this.state.cacheable && this.state.cachedImagePath) {
-                    let delImagePath = this.state.cachedImagePath;
-                    RNFS
-                    .exists(delImagePath)
-                    .then((res) => {
-                        if (res) {
-                            RNFS
-                            .unlink(delImagePath)
-                            .catch((err) => {});
+            .stat(filePath)
+            .then((res) => {
+                if (res.isFile()) {
+                    if (debug) {
+                        console.tron.log("Cache HIT")
+                    }
+
+                    // means file exists, ie, cache-hit
+                    // if download went bad and we have an empty file.
+                    if (res.size < 100) {
+                        if (debug) {
+                            console.tron.log("Cache HIT, but image is empty")
                         }
-                    });
+                        this._handleCacheMiss(imageUri, cachePath, cacheKey, dirPath, filePath)
+
+                    } else {
+                        this.setState({ cacheable: true, cachedImagePath: filePath });
+                    }
                 }
-
-                let downloadOptions = {
-                    fromUrl: imageUri,
-                    toFile: filePath,
-                    background: true,
-                    begin: this.imageDownloadBegin,
-                    progress: this.imageDownloadProgress
-                };
-
-                // directory exists.. begin download
-                RNFS
-                .downloadFile(downloadOptions)
-                .promise
-                .then(() => {
-                    this.setState({cacheable: true, cachedImagePath: filePath});
-                })
-                .catch((err) => {
-                    this.setState({cacheable: false, cachedImagePath: null});
-                });
             })
             .catch((err) => {
-                this.setState({cacheable: false, cachedImagePath: null});
+                this._handleCacheMiss(imageUri, cachePath, cacheKey, dirPath, filePath)
+            });
+    }
+    _handleCacheMiss(imageUri, cachePath, cacheKey, dirPath, filePath) {
+        if (debug) {
+            console.tron.log("Cache MISS")
+        }
+
+        let downloadOptions = {
+            fromUrl: imageUri,
+            toFile: filePath,
+            background: true,
+            begin: this.imageDownloadBegin,
+            progress: this.imageDownloadProgress
+        };
+        if (debug) {
+            console.tron.log("Download options:");
+            console.tron.log(downloadOptions);
+        }
+        // directory exists.. begin download
+        return RNFS
+            .downloadFile(downloadOptions).promise.then((res) => {
+                if (debug) {
+                    console.tron.log("Downloaded Complete")
+                }
+                this.setState({ cacheable: true, cachedImagePath: filePath });
             })
-        });
+            .catch((err) => {
+                if (debug) {
+                    console.tron.log(err)
+                    console.tron.log("Download failed")
+                }
+                this.setState({ cacheable: false, cachedImagePath: null });
+            });
+
     }
 
     _processSource(source) {
+        console.tron.log('processing source')
         if (source !== null
             && typeof source === "object"
-            && source.hasOwnProperty('uri'))
-        { // remote
+            && source.hasOwnProperty('uri')) { // remote
+            if (debug) {
+                console.tron.log('remote img detected')
+            }
             const url = new URL(source.uri);
-            const type = url.pathname.replace(/.*\.(.*)/, '$1');
-            const cacheKey = SHA1(url.pathname)+'.'+type;
 
+            const type = url.pathname.replace(/.*\.(.*)/, '$1');
+            const cacheKey = SHA1(url.pathname) + '.' + type;
+            if (debug) {
+                console.tron.log('Url provided is:')
+                console.tron.log(url)
+                console.tron.log('Type:' + type)
+                console.tron.log('Cache key generated:' + cacheKey)
+            }
             this.checkImageCache(source.uri, url.host, cacheKey);
-            this.setState({isRemote: true});
+
+            this.state.isRemote = true;
+
         }
         else {
-            this.setState({isRemote: false});
+            if (debug) {
+                console.tron.log('Local img source detected')
+            }
+            this.state.isRemote = false;
         }
     }
 
     componentWillMount() {
-        NetInfo.isConnected.addEventListener('change', this._handleConnectivityChange);
-        
         this._processSource(this.props.source);
     }
 
     componentWillUnmount() {
-        NetInfo.isConnected.removeEventListener('change', this._handleConnectivityChange);
-    
         if (this.state.downloading && this.state.jobId) {
             RNFS.stopDownload(this.state.jobId);
         }
     }
 
-    async _handleConnectivityChange(isConnected) {
-	    this.setState({
-            networkAvailable: isConnected,
-	    });
-    };
-  
-    render() {        
+
+    render() {
         if (!this.state.isRemote && !this.state.cacheable) {
+            if (debug) {
+                console.tron.log('Rendering from local disk')
+            }
             return this.renderLocal();
         }
 
         if (this.state.cacheable && this.state.cachedImagePath) {
+            if (debug) {
+                console.tron.log('Rendering from cache')
+            }
             return this.renderCache();
         }
-        
+
         if (this.props.defaultSource) {
+            if (debug) {
+                console.tron.log('Rendering from default source')
+            }
             return this.renderDefaultSource();
         }
-        
+
         return (
             <ActivityIndicator {...this.props.activityIndicatorProps} />
         );
@@ -172,8 +184,8 @@ class CacheableImage extends React.Component {
 
     renderCache() {
         return (
-            <ResponsiveImage {...this.props} source={{uri: 'file://'+this.state.cachedImagePath}}>
-            {this.props.children}
+            <ResponsiveImage {...this.props} source={{ uri: 'file://' + this.state.cachedImagePath }}>
+                {this.props.children}
             </ResponsiveImage>
         );
     }
@@ -181,7 +193,7 @@ class CacheableImage extends React.Component {
     renderLocal() {
         return (
             <ResponsiveImage {...this.props} >
-            {this.props.children}
+                {this.props.children}
             </ResponsiveImage>
         );
     }
@@ -190,7 +202,7 @@ class CacheableImage extends React.Component {
         const { defaultSource, ...props } = this.props;
         return (
             <CacheableImage {...props} source={defaultSource}>
-            {this.props.children}
+                {this.props.children}
             </CacheableImage>
         );
     }
