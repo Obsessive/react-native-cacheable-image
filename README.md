@@ -12,6 +12,7 @@ Set debug to 1 and see whats going on inside the component in real time using re
 - States are managed better.
 
 ### I recommend you try both the variants (this and the original) and leave a feedback so we can improve this component
+Big Thanks @jayesbe 
 
 ## Notes 1
 CacheableImage understands its state. Once you define a source the first time it's state has been set. You can create another component with the same source and it will load the same cached file without having to fetch from a remote URI.
