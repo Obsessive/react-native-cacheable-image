@@ -1,6 +1,7 @@
 # react-native-cacheable-image-2
 An Image component for React Native that will cache itself to disk.
-for of react-native-cacheable-image
+
+fork of react-native-cacheable-image
 
 ## Notes 2
 We got obsessed with this component and decided to refactor a bit to achieve the stability we needed.
